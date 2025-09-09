@@ -250,7 +250,15 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
     
     # Left panel - Frequent Scenario
     if frequent_flood_data is not None:
-        # Process flood depth data with threshold
+        # Enhanced urban layer with brown/tan colormap - render first (underneath)
+        if urban_data is not None:
+            urban_enhanced = create_enhanced_urban_layer(urban_data, intensity=3.0)
+            urban_colors = mcolors.LinearSegmentedColormap.from_list(
+                'urban_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
+            )
+            ax1.imshow(urban_enhanced, cmap=urban_colors, alpha=urban_alpha, extent=extent)
+        
+        # Process flood depth data with threshold - render on top
         frequent_display = frequent_flood_data.copy().astype(float)
         
         if show_threshold_only:
@@ -265,15 +273,6 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
         
         im1 = ax1.imshow(frequent_display, cmap=flood_cmap, alpha=flood_alpha, 
                         vmin=0, vmax=depth_range, extent=extent)
-        
-        # Enhanced urban layer with grey colormap
-        if urban_data is not None:
-            urban_enhanced = create_enhanced_urban_layer(urban_data, intensity=3.0)
-            # Changed to grey colormap for urban areas
-            urban_colors = mcolors.LinearSegmentedColormap.from_list(
-                'urban_grey', ['lightgrey', 'grey', 'darkgrey'], N=256
-            )
-            ax1.imshow(urban_enhanced, cmap=urban_colors, alpha=urban_alpha, extent=extent)
         
         ax1.set_title(f'Frequent Scenario\nFlood: {flood_year}, Urban: {urban_year}', fontsize=12, fontweight='bold')
         
@@ -290,11 +289,11 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
     
     # Right panel - Rare Scenario
     if rare_flood_data is not None:
-        # Enhanced urban layer with grey colormap - render first (underneath)
+        # Enhanced urban layer with brown/tan colormap - render first (underneath)
         if urban_data is not None:
             urban_enhanced = create_enhanced_urban_layer(urban_data, intensity=3.0)
             urban_colors = mcolors.LinearSegmentedColormap.from_list(
-                'urban_grey', ['lightgrey', 'grey', 'darkgrey'], N=256
+                'urban_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
             )
             ax2.imshow(urban_enhanced, cmap=urban_colors, alpha=urban_alpha, extent=extent)
         
@@ -337,33 +336,29 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
             frequent_urban_depths = frequent_flood_data[urban_mask]
             frequent_flooded = np.sum(frequent_urban_depths > flood_threshold_m)  # Use dynamic threshold
             frequent_pct = (frequent_flooded / total_urban * 100) if total_urban > 0 else 0
-            frequent_avg_depth = np.mean(frequent_urban_depths[frequent_urban_depths > flood_threshold_m]) if len(frequent_urban_depths[frequent_urban_depths > flood_threshold_m]) > 0 else 0
         else:
             frequent_pct = 0
-            frequent_avg_depth = 0
         
         if rare_flood_data is not None:
             rare_urban_depths = rare_flood_data[urban_mask]
             rare_flooded = np.sum(rare_urban_depths > flood_threshold_m)  # Use dynamic threshold
             rare_pct = (rare_flooded / total_urban * 100) if total_urban > 0 else 0
-            rare_avg_depth = np.mean(rare_urban_depths[rare_urban_depths > flood_threshold_m]) if len(rare_urban_depths[rare_urban_depths > flood_threshold_m]) > 0 else 0
         else:
             rare_pct = 0
-            rare_avg_depth = 0
         
-        # Add stats boxes with larger, more prominent styling
-        box_props = dict(boxstyle='round,pad=0.6', facecolor='white', alpha=0.95, 
+        # Add stats boxes with larger, more prominent styling and better positioning
+        box_props = dict(boxstyle='round,pad=0.7', facecolor='white', alpha=0.95, 
                         edgecolor='black', linewidth=2)
         
-        # Include threshold in the stats display
+        # Include threshold in the stats display - removed average depth
         threshold_cm = int(flood_threshold_m * 100)
-        frequent_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {frequent_pct:.1f}%\nAvg Depth: {frequent_avg_depth:.2f}m'
-        ax1.text(0.02, 0.98, frequent_stats, transform=ax1.transAxes,
-                bbox=box_props, verticalalignment='top', fontsize=12, fontweight='bold')
+        frequent_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {frequent_pct:.1f}%'
+        ax1.text(0.03, 0.97, frequent_stats, transform=ax1.transAxes,
+                bbox=box_props, verticalalignment='top', fontsize=15, fontweight='bold')
         
-        rare_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {rare_pct:.1f}%\nAvg Depth: {rare_avg_depth:.2f}m'
-        ax2.text(0.02, 0.98, rare_stats, transform=ax2.transAxes,
-                bbox=box_props, verticalalignment='top', fontsize=12, fontweight='bold')
+        rare_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {rare_pct:.1f}%'
+        ax2.text(0.03, 0.97, rare_stats, transform=ax2.transAxes,
+                bbox=box_props, verticalalignment='top', fontsize=15, fontweight='bold')
     
     plt.tight_layout()
     return fig
@@ -385,7 +380,7 @@ def main():
     # Data directory path
     data_path = st.sidebar.text_input(
         "Data Directory Path:", 
-        value=default_path,  # Use the detected default
+        value=default_path,
         help="Path to the directory containing your exported raster files"
     )
     
