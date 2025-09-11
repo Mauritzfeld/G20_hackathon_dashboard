@@ -266,8 +266,8 @@ def create_dual_flood_models(data_dict, flood_year, buildup_year, buildup_alpha,
         if buildup_data is not None:
             buildup_enhanced = create_enhanced_buildup_layer(buildup_data, intensity=3.0)
             buildup_colors = mcolors.LinearSegmentedColormap.from_list(
-                'buildup_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
-            )
+    'buildup_grey', ['#404040', '#404040'], N=256  # Solid dark grey
+)
             ax1.imshow(buildup_enhanced, cmap=buildup_colors, alpha=buildup_alpha, extent=extent)
         
         # Process flood depth data with threshold - render on top
@@ -305,7 +305,7 @@ def create_dual_flood_models(data_dict, flood_year, buildup_year, buildup_alpha,
         if buildup_data is not None:
             buildup_enhanced = create_enhanced_buildup_layer(buildup_data, intensity=3.0)
             buildup_colors = mcolors.LinearSegmentedColormap.from_list(
-                'buildup_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
+                'buildup_grey', ['#404040', '#404040'], N=256  # Solid dark grey
             )
             ax2.imshow(buildup_enhanced, cmap=buildup_colors, alpha=buildup_alpha, extent=extent)
         
