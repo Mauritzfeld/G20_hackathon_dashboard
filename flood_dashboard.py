@@ -77,13 +77,13 @@ def load_raster_data(file_path):
         st.error(f"Error loading {file_path}: {e}")
         return None, None, None, None
 
-def align_flood_data_to_urban(flood_data, urban_data):
-    """Align flood data to match urban data dimensions"""
-    if flood_data is None or urban_data is None:
+def align_flood_data_to_buildup(flood_data, buildup_data):
+    """Align flood data to match built-up data dimensions"""
+    if flood_data is None or buildup_data is None:
         return flood_data
     
     # Check if dimensions match
-    if flood_data.shape == urban_data.shape:
+    if flood_data.shape == buildup_data.shape:
         return flood_data
     
     # If dimensions don't match, we need to resample
@@ -91,9 +91,9 @@ def align_flood_data_to_urban(flood_data, urban_data):
         from scipy.ndimage import zoom
         
         # Calculate zoom factors for each dimension
-        zoom_factors = tuple(urban_data.shape[i] / flood_data.shape[i] for i in range(len(flood_data.shape)))
+        zoom_factors = tuple(buildup_data.shape[i] / flood_data.shape[i] for i in range(len(flood_data.shape)))
         
-        # Resample flood data to match urban data
+        # Resample flood data to match built-up data
         aligned_flood = zoom(flood_data, zoom_factors, order=1)  # Linear interpolation
         
         return aligned_flood
@@ -101,7 +101,7 @@ def align_flood_data_to_urban(flood_data, urban_data):
     except ImportError:
         # Fallback: simple reshape (may distort data)
         try:
-            aligned_flood = np.resize(flood_data, urban_data.shape)
+            aligned_flood = np.resize(flood_data, buildup_data.shape)
             return aligned_flood
         except:
             return flood_data
@@ -136,50 +136,62 @@ def find_flood_files(data_path, flood_type, year, scenario, frequency):
     return None
 
 @st.cache(allow_output_mutation=True)
-def find_urban_files(data_path, year, scenario):
-    """Find urban files based on naming pattern"""
+def find_buildup_files(data_path, year, scenario):
+    """Find built-up files based on naming pattern"""
     if year <= 2024:
         # Use historical timeline data
         return os.path.join(data_path, "settlement_timeline_1985_2024_geo.tif")
     else:
-        # Future urban projections
-        pattern = f"Final urban_{year}_{scenario}.tif"
+        # Future built-up projections
+        pattern = f"Final buildup_{year}_{scenario}.tif"
         file_path = os.path.join(data_path, pattern)
         if os.path.exists(file_path):
             return file_path
+        
+        # Try alternative naming patterns
+        alt_patterns = [
+            f"Final urban_{year}_{scenario}.tif",  # Legacy naming
+            f"buildup_{year}_{scenario}.tif",
+            f"built_up_{year}_{scenario}.tif"
+        ]
+        
+        for alt_pattern in alt_patterns:
+            alt_file_path = os.path.join(data_path, alt_pattern)
+            if os.path.exists(alt_file_path):
+                return alt_file_path
     
     return None
 
-def load_urban_data(data_path, urban_year, flood_year, scenario):
-    """Load appropriate urban data based on year and scenario"""
-    if urban_year <= 2024:
+def load_buildup_data(data_path, buildup_year, flood_year, scenario):
+    """Load appropriate built-up data based on year and scenario"""
+    if buildup_year <= 2024:
         # Use historical timeline data
         timeline_file = os.path.join(data_path, "settlement_timeline_1985_2024_geo.tif")
         if os.path.exists(timeline_file):
             timeline_data, bounds, transform, crs = load_raster_data(timeline_file)
             if timeline_data is not None:
-                urban_mask = (timeline_data > 0) & (timeline_data <= urban_year)
-                return urban_mask.astype(np.uint8), bounds, transform, crs, timeline_data
+                buildup_mask = (timeline_data > 0) & (timeline_data <= buildup_year)
+                return buildup_mask.astype(np.uint8), bounds, transform, crs, timeline_data
     else:
-        # Use future urban projections
-        urban_file = find_urban_files(data_path, urban_year, scenario)
-        if urban_file:
-            urban_data, bounds, transform, crs = load_raster_data(urban_file)
-            if urban_data is not None:
-                urban_mask = urban_data > 0
-                return urban_mask.astype(np.uint8), bounds, transform, crs, None
+        # Use future built-up projections
+        buildup_file = find_buildup_files(data_path, buildup_year, scenario)
+        if buildup_file:
+            buildup_data, bounds, transform, crs = load_raster_data(buildup_file)
+            if buildup_data is not None:
+                buildup_mask = buildup_data > 0
+                return buildup_mask.astype(np.uint8), bounds, transform, crs, None
     
     return None, None, None, None, None
 
-def create_enhanced_urban_layer(urban_data, intensity=2.0):
-    """Create enhanced urban layer with better visibility"""
-    if urban_data is None:
+def create_enhanced_buildup_layer(buildup_data, intensity=2.0):
+    """Create enhanced built-up layer with better visibility"""
+    if buildup_data is None:
         return None
     
-    # Create enhanced urban mask
-    urban_enhanced = urban_data.astype(float) * intensity
-    urban_enhanced[urban_data == 0] = np.nan
-    return urban_enhanced
+    # Create enhanced built-up mask
+    buildup_enhanced = buildup_data.astype(float) * intensity
+    buildup_enhanced[buildup_data == 0] = np.nan
+    return buildup_enhanced
 
 def create_flood_depth_colormap():
     """Create standardized blue colormap for flood depths"""
@@ -187,27 +199,27 @@ def create_flood_depth_colormap():
     n_bins = 256
     return mcolors.LinearSegmentedColormap.from_list('flood_depth', colors, N=n_bins)
 
-def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flood_alpha, flood_type, ssp_scenario, flood_threshold_m=0.1, show_threshold_only=False):
+def create_dual_flood_models(data_dict, flood_year, buildup_year, buildup_alpha, flood_alpha, flood_type, ssp_scenario, flood_threshold_m=0.1, show_threshold_only=False):
     """Create side-by-side flood model visualizations with real data"""
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 9))
     
     # Update title to show both years
-    title = f'{flood_type} Flood Risk Models - Flood: {flood_year}, Urban: {urban_year} ({ssp_scenario})'
+    title = f'{flood_type} Flood Risk Models - Flood: {flood_year}, Built-up: {buildup_year} ({ssp_scenario})'
     fig.suptitle(title, fontsize=16, fontweight='bold')
     
-    urban_data = data_dict.get('urban')
+    buildup_data = data_dict.get('buildup')
     bounds = data_dict.get('bounds')
     
     # Load real flood data
     frequent_flood_data = data_dict.get('frequent_flood')
     rare_flood_data = data_dict.get('rare_flood')
     
-    # Align flood data to urban grid
+    # Align flood data to built-up grid
     if frequent_flood_data is not None:
-        frequent_flood_data = align_flood_data_to_urban(frequent_flood_data, urban_data)
+        frequent_flood_data = align_flood_data_to_buildup(frequent_flood_data, buildup_data)
     if rare_flood_data is not None:
-        rare_flood_data = align_flood_data_to_urban(rare_flood_data, urban_data)
+        rare_flood_data = align_flood_data_to_buildup(rare_flood_data, buildup_data)
     
     # Set up proper extent for basemap
     if bounds:
@@ -250,13 +262,13 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
     
     # Left panel - Frequent Scenario
     if frequent_flood_data is not None:
-        # Enhanced urban layer with brown/tan colormap - render first (underneath)
-        if urban_data is not None:
-            urban_enhanced = create_enhanced_urban_layer(urban_data, intensity=3.0)
-            urban_colors = mcolors.LinearSegmentedColormap.from_list(
-                'urban_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
+        # Enhanced built-up layer with brown/tan colormap - render first (underneath)
+        if buildup_data is not None:
+            buildup_enhanced = create_enhanced_buildup_layer(buildup_data, intensity=3.0)
+            buildup_colors = mcolors.LinearSegmentedColormap.from_list(
+                'buildup_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
             )
-            ax1.imshow(urban_enhanced, cmap=urban_colors, alpha=urban_alpha, extent=extent)
+            ax1.imshow(buildup_enhanced, cmap=buildup_colors, alpha=buildup_alpha, extent=extent)
         
         # Process flood depth data with threshold - render on top
         frequent_display = frequent_flood_data.copy().astype(float)
@@ -274,7 +286,7 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
         im1 = ax1.imshow(frequent_display, cmap=flood_cmap, alpha=flood_alpha, 
                         vmin=0, vmax=depth_range, extent=extent)
         
-        ax1.set_title(f'Frequent Scenario\nFlood: {flood_year}, Urban: {urban_year}', fontsize=12, fontweight='bold')
+        ax1.set_title(f'Frequent Scenario\nFlood: {flood_year}, Built-up: {buildup_year}', fontsize=12, fontweight='bold')
         
         # Set proper axis limits and labels
         if bounds:
@@ -289,13 +301,13 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
     
     # Right panel - Rare Scenario
     if rare_flood_data is not None:
-        # Enhanced urban layer with brown/tan colormap - render first (underneath)
-        if urban_data is not None:
-            urban_enhanced = create_enhanced_urban_layer(urban_data, intensity=3.0)
-            urban_colors = mcolors.LinearSegmentedColormap.from_list(
-                'urban_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
+        # Enhanced built-up layer with brown/tan colormap - render first (underneath)
+        if buildup_data is not None:
+            buildup_enhanced = create_enhanced_buildup_layer(buildup_data, intensity=3.0)
+            buildup_colors = mcolors.LinearSegmentedColormap.from_list(
+                'buildup_brown', ['#D2B48C', '#A0522D', '#8B4513'], N=256  # Tan to dark brown
             )
-            ax2.imshow(urban_enhanced, cmap=urban_colors, alpha=urban_alpha, extent=extent)
+            ax2.imshow(buildup_enhanced, cmap=buildup_colors, alpha=buildup_alpha, extent=extent)
         
         # Process flood depth data with threshold - render on top
         rare_display = rare_flood_data.copy().astype(float)
@@ -313,7 +325,7 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
         im2 = ax2.imshow(rare_display, cmap=flood_cmap, alpha=flood_alpha, 
                         vmin=0, vmax=depth_range, extent=extent)
         
-        ax2.set_title(f'Rare Scenario\nFlood: {flood_year}, Urban: {urban_year}', fontsize=12, fontweight='bold')
+        ax2.set_title(f'Rare Scenario\nFlood: {flood_year}, Built-up: {buildup_year}', fontsize=12, fontweight='bold')
         
         # Set proper axis limits and labels
         if bounds:
@@ -327,22 +339,22 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
         cbar2.set_label('Flood Depth (m)', fontsize=10)
     
     # Add statistics for both scenarios with larger, more prominent boxes
-    if urban_data is not None:
-        urban_mask = urban_data > 0
-        total_urban = np.sum(urban_mask)
+    if buildup_data is not None:
+        buildup_mask = buildup_data > 0
+        total_buildup = np.sum(buildup_mask)
         
         # Calculate flood exposure statistics using dynamic threshold
         if frequent_flood_data is not None:
-            frequent_urban_depths = frequent_flood_data[urban_mask]
-            frequent_flooded = np.sum(frequent_urban_depths > flood_threshold_m)  # Use dynamic threshold
-            frequent_pct = (frequent_flooded / total_urban * 100) if total_urban > 0 else 0
+            frequent_buildup_depths = frequent_flood_data[buildup_mask]
+            frequent_flooded = np.sum(frequent_buildup_depths > flood_threshold_m)  # Use dynamic threshold
+            frequent_pct = (frequent_flooded / total_buildup * 100) if total_buildup > 0 else 0
         else:
             frequent_pct = 0
         
         if rare_flood_data is not None:
-            rare_urban_depths = rare_flood_data[urban_mask]
-            rare_flooded = np.sum(rare_urban_depths > flood_threshold_m)  # Use dynamic threshold
-            rare_pct = (rare_flooded / total_urban * 100) if total_urban > 0 else 0
+            rare_buildup_depths = rare_flood_data[buildup_mask]
+            rare_flooded = np.sum(rare_buildup_depths > flood_threshold_m)  # Use dynamic threshold
+            rare_pct = (rare_flooded / total_buildup * 100) if total_buildup > 0 else 0
         else:
             rare_pct = 0
         
@@ -350,13 +362,13 @@ def create_dual_flood_models(data_dict, flood_year, urban_year, urban_alpha, flo
         box_props = dict(boxstyle='round,pad=0.7', facecolor='white', alpha=0.95, 
                         edgecolor='black', linewidth=2)
         
-        # Include threshold in the stats display - removed average depth
+        # Include threshold in the stats display
         threshold_cm = int(flood_threshold_m * 100)
-        frequent_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {frequent_pct:.1f}%'
+        frequent_stats = f'Built-up: {total_buildup * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {frequent_pct:.1f}%'
         ax1.text(0.03, 0.97, frequent_stats, transform=ax1.transAxes,
                 bbox=box_props, verticalalignment='top', fontsize=15, fontweight='bold')
         
-        rare_stats = f'Urban: {total_urban * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {rare_pct:.1f}%'
+        rare_stats = f'Built-up: {total_buildup * 0.01:.1f} km²\nFlooded (>{threshold_cm}cm): {rare_pct:.1f}%'
         ax2.text(0.03, 0.97, rare_stats, transform=ax2.transAxes,
                 bbox=box_props, verticalalignment='top', fontsize=15, fontweight='bold')
     
@@ -440,21 +452,21 @@ def main():
         help=f"Select flood model year (Historical: 2020, Future: {flood_type} projections)"
     )
     
-    # Urbanization Timeline Slider - always include future projections
+    # Built-up Timeline Slider - always include future projections
     historical_years = list(range(1985, 2025, 5)) + [2024]
     future_years = [2030, 2040, 2050]
-    urban_years = historical_years + future_years
+    buildup_years = historical_years + future_years
     
-    selected_urban_year = st.sidebar.select_slider(
-        "Urban Development Year:",
-        options=urban_years,
+    selected_buildup_year = st.sidebar.select_slider(
+        "Built-up Development Year:",
+        options=buildup_years,
         value=2020,  # Fixed default value, independent of flood year
-        help=f"Urban development timeline (Historical: 1985-2024, Future: {ssp_display} projections)"
+        help=f"Built-up development timeline (Historical: 1985-2024, Future: {ssp_display} projections)"
     )
     
     # Layer transparency controls
     st.sidebar.subheader("🎨 Layer Controls")
-    urban_alpha = st.sidebar.slider("Urban Layer Opacity", 0.1, 1.0, 0.9, 0.1)
+    buildup_alpha = st.sidebar.slider("Built-up Layer Opacity", 0.1, 1.0, 0.9, 0.1)
     flood_alpha = st.sidebar.slider("Flood Layer Opacity", 0.1, 1.0, 0.7, 0.1)
     
     # Load data
@@ -465,17 +477,17 @@ def main():
         st.error(f"Data directory not found: {data_path}")
         return
     
-    # Load urban data based on both years and scenario
-    urban_data, bounds, transform, crs, timeline_data = load_urban_data(
-        data_path, selected_urban_year, selected_flood_year, ssp_scenario
+    # Load built-up data based on both years and scenario
+    buildup_data, bounds, transform, crs, timeline_data = load_buildup_data(
+        data_path, selected_buildup_year, selected_flood_year, ssp_scenario
     )
     
-    if urban_data is not None:
-        data_dict['urban'] = urban_data
+    if buildup_data is not None:
+        data_dict['buildup'] = buildup_data
         data_dict['bounds'] = bounds
         data_dict['timeline'] = timeline_data
     else:
-        st.error(f"Could not load urban data for year {selected_urban_year}")
+        st.error(f"Could not load built-up data for year {selected_buildup_year}")
         return
     
     # Load flood data
@@ -500,18 +512,18 @@ def main():
         st.markdown(f'<h2 class="scenario-header">{flood_type} Flood Risk Analysis</h2>', unsafe_allow_html=True)
         
         # Timeline summary
-        timeline_info = f"**Flood Model:** {selected_flood_year} ({ssp_display}) | **Urban Development:** {selected_urban_year}"
-        if selected_urban_year > 2024:
+        timeline_info = f"**Flood Model:** {selected_flood_year} ({ssp_display}) | **Built-up Development:** {selected_buildup_year}"
+        if selected_buildup_year > 2024:
             timeline_info += f" ({ssp_display} projection)"
-        elif selected_urban_year <= 2024:
+        elif selected_buildup_year <= 2024:
             timeline_info += " (historical)"
         
         st.markdown(timeline_info)
         
         # Create and display dual flood models with threshold parameters
         dual_fig = create_dual_flood_models(
-            data_dict, selected_flood_year, selected_urban_year, 
-            urban_alpha, flood_alpha, flood_type, ssp_display,
+            data_dict, selected_flood_year, selected_buildup_year, 
+            buildup_alpha, flood_alpha, flood_type, ssp_display,
             flood_threshold_m, show_threshold_only
         )
         st.pyplot(dual_fig)
@@ -521,14 +533,14 @@ def main():
         st.markdown("---")
         
         # Create insights based on temporal combinations
-        if selected_urban_year < selected_flood_year:
-            insight_text = f"**Analysis Insight**: Showing how {selected_urban_year} urban development would be exposed to future {selected_flood_year} flood conditions under {ssp_display} scenario."
+        if selected_buildup_year < selected_flood_year:
+            insight_text = f"**Analysis Insight**: Showing how {selected_buildup_year} built-up development would be exposed to future {selected_flood_year} flood conditions under {ssp_display} scenario."
             st.info(insight_text)
-        elif selected_urban_year > selected_flood_year:
-            insight_text = f"**Analysis Insight**: Showing how future {selected_urban_year} urban growth (under {ssp_display}) would be exposed to {selected_flood_year} flood conditions."
+        elif selected_buildup_year > selected_flood_year:
+            insight_text = f"**Analysis Insight**: Showing how future {selected_buildup_year} built-up growth (under {ssp_display}) would be exposed to {selected_flood_year} flood conditions."
             st.warning(insight_text)
         else:
-            insight_text = f"**Analysis Insight**: Synchronized analysis of both urban development and flood risk for {selected_flood_year} under {ssp_display} scenario."
+            insight_text = f"**Analysis Insight**: Synchronized analysis of both built-up development and flood risk for {selected_flood_year} under {ssp_display} scenario."
             st.success(insight_text)
         
         # Climate scenario context
@@ -566,8 +578,8 @@ def main():
     
     # Footer with enhanced information
     st.markdown("---")
-    st.markdown("**Enhanced Dashboard**: Dual timeline analysis with independent flood and urban development controls")
-    st.markdown(f"**Current Analysis**: {flood_type} flood risk ({selected_flood_year}) vs Urban development ({selected_urban_year}) under {ssp_display} scenario")
+    st.markdown("**Enhanced Dashboard**: Dual timeline analysis with independent flood and built-up development controls")
+    st.markdown(f"**Current Analysis**: {flood_type} flood risk ({selected_flood_year}) vs Built-up development ({selected_buildup_year}) under {ssp_display} scenario")
 
 if __name__ == "__main__":
     main()
